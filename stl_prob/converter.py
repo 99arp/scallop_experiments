@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import math
 
 from stl.monitor import GroupEvaluation, MonitorResult, RuleEvaluation
+from event_calculus.models import ProbabilisticFact
 from event_calculus.syntax import stl_predicate_term
 
 
@@ -62,6 +63,17 @@ class ScallopFact:
             f"{self.probability:.9f}::happensAt("
             f"{stl_predicate_term(self.source_kind, self.name, self.value)},"
             f"{self.sample_index})."
+        )
+
+    def to_event_calculus_fact(self) -> ProbabilisticFact:
+        return ProbabilisticFact(
+            relation_name="happensAt",
+            source_kind=self.source_kind,
+            name=self.name,
+            sample_index=self.sample_index,
+            value=self.value,
+            probability=self.probability,
+            rho=self.rho,
         )
 
 
@@ -190,6 +202,12 @@ def render_event_calculus_events(facts: tuple[ScallopFact, ...]) -> str:
     if not facts:
         return ""
     return "\n".join(fact.to_event_calculus() for fact in facts) + "\n"
+
+
+def scallop_facts_to_event_calculus_facts(
+    facts: tuple[ScallopFact, ...],
+) -> tuple[ProbabilisticFact, ...]:
+    return tuple(fact.to_event_calculus_fact() for fact in facts)
 
 
 def _escape_string(value: str) -> str:

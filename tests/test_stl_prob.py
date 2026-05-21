@@ -13,6 +13,7 @@ from stl_prob import (
     monitor_result_to_facts,
     render_event_calculus_events,
     render_scallop_facts,
+    scallop_facts_to_event_calculus_facts,
     sigmoid_probability,
 )
 
@@ -48,6 +49,9 @@ class STLProbTests(unittest.TestCase):
             "happensAt(stl_predicate(rule,origin_to_drone1,true),1).",
             render_event_calculus_events(facts),
         )
+        ec_facts = scallop_facts_to_event_calculus_facts(facts)
+        self.assertEqual(ec_facts[0].relation_name, "happensAt")
+        self.assertEqual(ec_facts[0].sample_index, 1)
 
     def test_window_signal_can_be_selected_explicitly(self) -> None:
         monitor = STLDistanceMonitor(threshold_m=100.0, window_steps=2)

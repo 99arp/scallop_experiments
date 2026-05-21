@@ -12,6 +12,10 @@ from .models import (
     FluentProbability,
     ProbabilisticFact,
 )
+from .Tensor_pEC_files.definitions import (
+    initiatedAtStlPredicate,
+    terminatedAtStlPredicate,
+)
 
 
 class TensorEventCalculusEngine:
@@ -38,16 +42,20 @@ class TensorEventCalculusEngine:
         time_steps = end - start + 1
         fluent_count = len(fluent_keys)
 
-        initiated = jnp.zeros((fluent_count, time_steps), dtype=jnp.float32)
-        terminated = jnp.zeros((fluent_count, time_steps), dtype=jnp.float32)
+        true_events = jnp.zeros((fluent_count, time_steps), dtype=jnp.float32)
+        false_events = jnp.zeros((fluent_count, time_steps), dtype=jnp.float32)
         for (fluent_key, sample_index, value), probabilities in _group_fact_probs(facts).items():
             probability = _noisy_or_probabilities(probabilities)
             fluent_index = key_to_index[fluent_key]
             time_index = sample_index - start
             if value:
-                initiated = initiated.at[fluent_index, time_index].set(probability)
+                true_events = true_events.at[fluent_index, time_index].set(probability)
             else:
-                terminated = terminated.at[fluent_index, time_index].set(probability)
+                false_events = false_events.at[fluent_index, time_index].set(probability)
+
+        input_events = {"true": true_events, "false": false_events}
+        initiated = initiatedAtStlPredicate(input_events)
+        terminated = terminatedAtStlPredicate(input_events)
 
         holds_matrix = _holds_at_matrix(initiated, terminated)
         holds = self._matrix_to_holds(

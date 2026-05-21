@@ -26,7 +26,7 @@ Run this from `/home/qnc/scallop`:
 Successful salvage looks like:
 
 ```text
-Ran 12 tests
+Ran 14 tests
 
 OK
 ```
@@ -155,6 +155,16 @@ holdsFor(stl_predicate(rule,origin_to_drone1)=true,[(1,12)]).
 
 `holdsFor` uses `[start_sample_index, end_sample_index)` intervals.
 
+The local Tensor-pEC-style app files live under:
+
+- `event_calculus/Tensor_pEC_files/declarations.py`
+- `event_calculus/Tensor_pEC_files/definitions.py`
+- `event_calculus/Tensor_pEC_files/dynamicGrounding.py`
+
+They mirror the upstream example layout: declarations name input events and
+fluents, definitions define `initiatedAt`/`terminatedAt`/`holdsAt`, and dynamic
+grounding extracts active STL predicate identities from the live narrative.
+
 During a ROS live run, ready STL samples are exported automatically to:
 
 ```text
@@ -199,8 +209,10 @@ Scallop fact export parameters:
 - `scallop_fact_midpoint`: sigmoid midpoint, default `0.0`
 - `scallop_fact_include_groups`: defaults to `true`
 - `scallop_fact_reset_on_start`: defaults to `true`
+- `event_calculus_live_enabled`: defaults to `true`
+- `event_calculus_hold_threshold`: defaults to `0.5`
 
 If salvage is successful under ROS, the node logs first-pose messages for each
-topic, then rule robustness lines and `scallop_facts_exported=...` once the
-sample window is full. The live Graphviz outputs are written to the configured
-visualization directory.
+topic, then rule robustness lines, `scallop_facts_exported=...`, and
+`Event Calculus true intervals:` once the sample window is full. The live
+Graphviz outputs are written to the configured visualization directory.

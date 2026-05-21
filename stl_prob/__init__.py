@@ -6,6 +6,7 @@ from .converter import (
     render_event_calculus_events,
     render_scallop_facts,
     rule_evaluation_to_fact,
+    scallop_facts_to_event_calculus_facts,
     sigmoid_probability,
 )
 from .exporter import ScallopFactExporter
@@ -19,5 +20,6 @@ __all__ = [
     "render_event_calculus_events",
     "render_scallop_facts",
     "rule_evaluation_to_fact",
+    "scallop_facts_to_event_calculus_facts",
     "sigmoid_probability",
 ]

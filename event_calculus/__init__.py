@@ -5,6 +5,7 @@ from .engine import (
     infer_event_calculus,
     infer_event_calculus_from_file,
 )
+from .live import LiveTensorEventCalculus
 from .models import (
     EventCalculusConfig,
     FluentInterval,
@@ -25,6 +26,7 @@ __all__ = [
     "ReferenceEventCalculusEngine",
     "FluentInterval",
     "FluentProbability",
+    "LiveTensorEventCalculus",
     "ProbabilisticFact",
     "infer_event_calculus",
     "infer_event_calculus_from_file",

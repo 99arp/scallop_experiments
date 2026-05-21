@@ -7,7 +7,12 @@ import jax.numpy as jnp
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 
-from stl_prob import ProbabilityConfig, ScallopFactExporter
+from event_calculus import EventCalculusConfig, LiveTensorEventCalculus
+from stl_prob import (
+    ProbabilityConfig,
+    ScallopFactExporter,
+    scallop_facts_to_event_calculus_facts,
+)
 
 from .monitor import MonitorResult, STLDistanceMonitor
 from .visualizer import STLRuntimeVisualizer
@@ -42,6 +47,8 @@ class STLCGDistanceMonitor(Node):
         self.declare_parameter("scallop_fact_midpoint", 0.0)
         self.declare_parameter("scallop_fact_include_groups", True)
         self.declare_parameter("scallop_fact_reset_on_start", True)
+        self.declare_parameter("event_calculus_live_enabled", True)
+        self.declare_parameter("event_calculus_hold_threshold", 0.5)
 
         self.threshold_m = float(self.get_parameter("threshold_m").value)
         self.window_sec = float(self.get_parameter("window_sec").value)
@@ -61,6 +68,12 @@ class STLCGDistanceMonitor(Node):
         )
         self.scallop_fact_reset_on_start = bool(
             self.get_parameter("scallop_fact_reset_on_start").value
+        )
+        self.event_calculus_live_enabled = bool(
+            self.get_parameter("event_calculus_live_enabled").value
+        )
+        self.event_calculus_hold_threshold = float(
+            self.get_parameter("event_calculus_hold_threshold").value
         )
         configured_rules_path = str(self.get_parameter("rules_path").value).strip()
         configured_visualization_dir = str(
@@ -110,6 +123,15 @@ class STLCGDistanceMonitor(Node):
             if self.scallop_fact_export_enabled
             else None
         )
+        self.live_event_calculus = (
+            LiveTensorEventCalculus(
+                config=EventCalculusConfig(
+                    hold_threshold=self.event_calculus_hold_threshold,
+                )
+            )
+            if self.event_calculus_live_enabled
+            else None
+        )
 
         self.origin: Optional[jnp.ndarray] = None
         self.drone1: Optional[jnp.ndarray] = None
@@ -147,6 +169,11 @@ class STLCGDistanceMonitor(Node):
                 f"scale={self.scallop_fact_scale} "
                 f"midpoint={self.scallop_fact_midpoint} "
                 f"include_groups={self.scallop_fact_include_groups}"
+            )
+        if self.live_event_calculus is not None:
+            self.get_logger().info(
+                "event_calculus_live=true "
+                f"hold_threshold={self.event_calculus_hold_threshold}"
             )
 
     @staticmethod
@@ -205,7 +232,28 @@ class STLCGDistanceMonitor(Node):
         if self.scallop_fact_exporter is None:
             return None
         facts = self.scallop_fact_exporter.export_result(result)
+        self._process_event_calculus_facts(facts)
         return len(facts)
+
+    def _process_event_calculus_facts(self, facts) -> None:
+        if self.live_event_calculus is None or not facts:
+            return
+        result = self.live_event_calculus.feed(
+            scallop_facts_to_event_calculus_facts(facts)
+        )
+        if not result.intervals:
+            self.get_logger().info("event_calculus_intervals=none")
+            return
+        lines = ["Event Calculus true intervals:"]
+        for interval in result.intervals:
+            lines.append(
+                "  "
+                f"{interval.source_kind}:{interval.name} "
+                f"[{interval.start_sample_index}, {interval.end_sample_index}) "
+                f"p_min={interval.min_probability:.3f} "
+                f"p_max={interval.max_probability:.3f}"
+            )
+        self.get_logger().info("\n".join(lines))
 
     def _log_result(self, result: MonitorResult) -> None:
         lines = ["", "Instantaneous rule evaluations:"]

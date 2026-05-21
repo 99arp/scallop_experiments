@@ -6,12 +6,14 @@ import unittest
 
 from event_calculus import (
     EventCalculusConfig,
+    LiveTensorEventCalculus,
     ReferenceEventCalculusEngine,
     infer_event_calculus,
     infer_event_calculus_from_file,
     parse_scallop_facts,
     render_event_calculus_facts,
 )
+from event_calculus.Tensor_pEC_files import declarations, dg, readDefinitions
 
 
 class EventCalculusTests(unittest.TestCase):
@@ -89,6 +91,35 @@ class EventCalculusTests(unittest.TestCase):
 
             self.assertEqual(len(result.holds), 1)
             self.assertEqual(result.holds[0].sample_index, 1)
+
+    def test_tensor_pec_files_define_stl_predicate_domain(self) -> None:
+        caching_order, definitions, tensors_dim = readDefinitions()
+
+        self.assertIn(("stl_predicate", "true"), declarations)
+        self.assertIn(("stl_predicate", "holds", "true"), caching_order)
+        self.assertIn(("stl_predicate", "holds", "true"), definitions)
+        self.assertEqual(tensors_dim, [1])
+
+    def test_live_tensor_event_calculus_processes_direct_facts(self) -> None:
+        facts = parse_scallop_facts(
+            "\n".join(
+                [
+                    "0.800000000::happensAt(stl_predicate(rule,origin_to_drone1,true),1).",
+                    "0.750000000::happensAt(stl_predicate(rule,origin_to_drone1,false),3).",
+                ]
+            )
+        )
+        live = LiveTensorEventCalculus(
+            config=EventCalculusConfig(hold_threshold=0.5)
+        )
+
+        first = live.feed((facts[0],))
+        second = live.feed((facts[1],))
+
+        self.assertEqual(dg(facts), (("rule", "origin_to_drone1"),))
+        self.assertEqual(len(first.intervals), 1)
+        self.assertEqual(second.intervals[0].start_sample_index, 1)
+        self.assertEqual(second.intervals[0].end_sample_index, 3)
 
 
 if __name__ == "__main__":
