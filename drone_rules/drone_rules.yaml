@@ -1,0 +1,74 @@
+version: 1
+combined_operator: and
+
+defaults:
+  threshold: threshold_m
+  temporal:
+    op: always
+    interval:
+      - 0
+      - window_end
+
+rules:
+  - name: origin_to_drone1
+    kind: distance
+    lhs: origin
+    rhs: drone1
+    op: ">"
+    label: origin -> drone1
+
+  - name: origin_to_drone2
+    kind: distance
+    lhs: origin
+    rhs: drone2
+    op: ">"
+    label: origin -> drone2
+
+  - name: drone1_to_drone2
+    kind: distance
+    lhs: drone1
+    rhs: drone2
+    op: ">"
+    label: drone1 -> drone2
+
+  - name: drone1_height_min
+    kind: height
+    entity: drone1
+    op: ">"
+    threshold: 10.0
+    label: drone1 height > 10 m
+
+  - name: drone1_height_max
+    kind: height
+    entity: drone1
+    op: "<"
+    threshold: 20.0
+    label: drone1 height < 20 m
+
+  - name: drone2_height_min
+    kind: height
+    entity: drone2
+    op: ">"
+    threshold: 10.0
+    label: drone2 height > 10 m
+
+  - name: drone2_height_max
+    kind: height
+    entity: drone2
+    op: "<"
+    threshold: 20.0
+    label: drone2 height < 20 m
+
+  - name: drone1_height_max_50
+    kind: height
+    entity: drone1
+    op: "<"
+    threshold: 50.0
+    label: drone1 height < 50 m
+
+  - name: drone2_height_max_50
+    kind: height
+    entity: drone2
+    op: "<"
+    threshold: 50.0
+    label: drone2 height < 50 m
