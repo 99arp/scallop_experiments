@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import math
 
 from stl.monitor import GroupEvaluation, MonitorResult, RuleEvaluation
+from event_calculus.syntax import stl_predicate_term
 
 
 @dataclass(frozen=True)
@@ -54,6 +55,13 @@ class ScallopFact:
             f"{value_text}, "
             f"{self.probability:.9f}, "
             f"{self.rho:.9f})."
+        )
+
+    def to_event_calculus(self) -> str:
+        return (
+            f"{self.probability:.9f}::happensAt("
+            f"{stl_predicate_term(self.source_kind, self.name, self.value)},"
+            f"{self.sample_index})."
         )
 
 
@@ -176,6 +184,12 @@ def render_scallop_facts(facts: tuple[ScallopFact, ...]) -> str:
     if not facts:
         return ""
     return "\n".join(fact.to_scallop() for fact in facts) + "\n"
+
+
+def render_event_calculus_events(facts: tuple[ScallopFact, ...]) -> str:
+    if not facts:
+        return ""
+    return "\n".join(fact.to_event_calculus() for fact in facts) + "\n"
 
 
 def _escape_string(value: str) -> str:

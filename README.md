@@ -26,7 +26,7 @@ Run this from `/home/qnc/scallop`:
 Successful salvage looks like:
 
 ```text
-Ran 11 tests
+Ran 12 tests
 
 OK
 ```
@@ -96,7 +96,7 @@ Example:
 .venv/bin/python - <<'PY'
 import jax.numpy as jnp
 from stl.monitor import STLDistanceMonitor
-from stl_prob import monitor_result_to_facts, render_scallop_facts
+from stl_prob import monitor_result_to_facts
 
 monitor = STLDistanceMonitor(threshold_m=100.0, window_steps=2)
 result = None
@@ -108,35 +108,34 @@ for i in range(2):
     )
 
 facts = monitor_result_to_facts(result)
-print(render_scallop_facts(facts))
+for fact in facts:
+    print(fact.to_event_calculus())
 PY
 ```
 
 Example output:
 
 ```text
-stl_predicate_probability("rule", "origin_to_drone1", 1, true, 0.999999999, 21.000000000).
+0.999999999::happensAt(stl_predicate(rule,origin_to_drone1,true),1).
 ```
 
 The fields are:
 
-- source kind: `rule` or `group`
-- STL predicate/group name
-- `sample_index`
-- Boolean STL value
-- sigmoid probability
-- original robustness `rho`
+- event predicate: `happensAt`
+- event term: `stl_predicate(source_kind, name, value)`
+- `sample_index` as the EC time point
+- probability prefix from the sigmoid
 
 ## Event Calculus Over Facts
 
-`event_calculus/` reads the exported `stl_predicate_probability(...)` stream and
-applies a compact probabilistic Event Calculus:
+`event_calculus/` reads the exported probabilistic `happensAt(...)` stream and
+applies a Tensor-pEC-style tensor backend implemented with JAX:
 
-- `value=true` initiates the fluent identified by `(source_kind, name)`;
-- `value=false` terminates that fluent;
-- when no event affects a fluent at a sample, inertia carries the previous
-  probability forward;
-- intervals are extracted from `ec_holds(...)` using a probability threshold.
+- `happensAt(stl_predicate(...,true),T)` contributes to `initiatedAt`;
+- `happensAt(stl_predicate(...,false),T)` contributes to `terminatedAt`;
+- input events are grounded into initiation and termination tensors;
+- `holdsAt` is computed with a vectorized JAX `lax.scan` recurrence;
+- intervals are extracted from `holdsAt(...)` using a probability threshold.
 
 Run EC over a live fact export:
 
@@ -150,11 +149,11 @@ python -m event_calculus \
 Output facts look like:
 
 ```text
-ec_holds("rule", "origin_to_drone1", 1, 0.999999999).
-ec_interval("rule", "origin_to_drone1", 1, 12, 0.812345678, 0.999999999).
+0.999999999::holdsAt(stl_predicate(rule,origin_to_drone1)=true,1).
+holdsFor(stl_predicate(rule,origin_to_drone1)=true,[(1,12)]).
 ```
 
-`ec_interval` uses `[start_sample_index, end_sample_index)` intervals.
+`holdsFor` uses `[start_sample_index, end_sample_index)` intervals.
 
 During a ROS live run, ready STL samples are exported automatically to:
 

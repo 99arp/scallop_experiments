@@ -45,6 +45,19 @@ class FluentInterval:
 
 
 @dataclass(frozen=True)
+class EventCalculusResult:
+    holds: tuple[FluentProbability, ...]
+    intervals: tuple[FluentInterval, ...]
+
+    def holds_at(self, source_kind: str, name: str) -> tuple[FluentProbability, ...]:
+        return tuple(
+            fluent
+            for fluent in self.holds
+            if fluent.source_kind == source_kind and fluent.name == name
+        )
+
+
+@dataclass(frozen=True)
 class EventCalculusConfig:
     """
     Configuration for the compact probabilistic EC engine.
@@ -53,9 +66,9 @@ class EventCalculusConfig:
     probability trace. `min_probability` prunes near-zero values from output.
     """
 
-    input_relation_name: str = "stl_predicate_probability"
-    holds_relation_name: str = "ec_holds"
-    interval_relation_name: str = "ec_interval"
+    input_relation_name: str = "happensAt"
+    holds_relation_name: str = "holdsAt"
+    interval_relation_name: str = "holdsFor"
     hold_threshold: float = 0.5
     min_probability: float = 1.0e-9
 

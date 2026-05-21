@@ -12,7 +12,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Run probabilistic Event Calculus over exported STL Scallop facts.",
     )
-    parser.add_argument("facts_path", help="Input stl_predicate_probability fact file")
+    parser.add_argument("facts_path", help="Input probabilistic happensAt fact file")
     parser.add_argument(
         "--output",
         "-o",
@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
         "--hold-threshold",
         type=float,
         default=0.5,
-        help="Probability threshold used for ec_interval extraction.",
+        help="Probability threshold used for holdsFor interval extraction.",
     )
     args = parser.parse_args(argv)
 

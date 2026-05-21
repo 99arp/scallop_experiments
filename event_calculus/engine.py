@@ -1,32 +1,20 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
 
 from .models import (
     EventCalculusConfig,
+    EventCalculusResult,
     FluentInterval,
     FluentProbability,
     ProbabilisticFact,
 )
 from .parser import parse_scallop_facts
+from .tensor_engine import TensorEventCalculusEngine
 
 
-@dataclass(frozen=True)
-class EventCalculusResult:
-    holds: tuple[FluentProbability, ...]
-    intervals: tuple[FluentInterval, ...]
-
-    def holds_at(self, source_kind: str, name: str) -> tuple[FluentProbability, ...]:
-        return tuple(
-            fluent
-            for fluent in self.holds
-            if fluent.source_kind == source_kind and fluent.name == name
-        )
-
-
-class EventCalculusEngine:
+class ReferenceEventCalculusEngine:
     """
     Compact probabilistic Event Calculus over STL predicate facts.
 
@@ -156,3 +144,7 @@ def infer_event_calculus_from_file(
 
 def _noisy_or(existing_probability: float, event_probability: float) -> float:
     return 1.0 - (1.0 - existing_probability) * (1.0 - event_probability)
+
+
+class EventCalculusEngine(TensorEventCalculusEngine):
+    """Default Tensor-pEC-style JAX backend."""

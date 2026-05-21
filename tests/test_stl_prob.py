@@ -11,6 +11,7 @@ from stl_prob import (
     ProbabilityConfig,
     ScallopFactExporter,
     monitor_result_to_facts,
+    render_event_calculus_events,
     render_scallop_facts,
     sigmoid_probability,
 )
@@ -43,6 +44,10 @@ class STLProbTests(unittest.TestCase):
         self.assertEqual(facts[0].name, "origin_to_drone1")
         self.assertEqual(facts[0].sample_index, 1)
         self.assertIn('stl_predicate_probability("rule", "origin_to_drone1", 1, true,', rendered)
+        self.assertIn(
+            "happensAt(stl_predicate(rule,origin_to_drone1,true),1).",
+            render_event_calculus_events(facts),
+        )
 
     def test_window_signal_can_be_selected_explicitly(self) -> None:
         monitor = STLDistanceMonitor(threshold_m=100.0, window_steps=2)
@@ -80,7 +85,7 @@ class STLProbTests(unittest.TestCase):
 
             self.assertEqual(len(facts), len(result.rule_evaluations) + len(result.group_evaluations))
             self.assertIn(
-                'stl_predicate_probability("rule", "origin_to_drone1", 1, true,',
+                "happensAt(stl_predicate(rule,origin_to_drone1,true),1).",
                 output_path.read_text(encoding="utf-8"),
             )
 
