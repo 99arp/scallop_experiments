@@ -433,6 +433,7 @@ dependencies = [
     { name = "jax", version = "0.10.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "maturin" },
     { name = "pyaml" },
+    { name = "pyyaml" },
 ]
 
 [package.metadata]
@@ -440,6 +441,7 @@ requires-dist = [
     { name = "jax", specifier = ">=0.4.13" },
     { name = "maturin", specifier = ">=1.13.3" },
     { name = "pyaml", specifier = ">=26.2.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [[package]]

@@ -11,6 +11,8 @@ oPIEC, persistence, frontend, and export layers.
 - `stl/monitor.py`: YAML rule loader plus pure in-memory STL evaluator.
 - `stl/visualizer.py` and `stl/viz.py`: Graphviz `dot` renderer for the live STL rule graph.
 - `stl/ros_monitor.py` and `stl/main.py`: thin ROS2 listener around the STL monitor.
+- `stl_prob/`: direct STL robustness to Scallop fact conversion and live export.
+- `event_calculus/`: probabilistic Event Calculus over exported STL fact streams.
 - `tests/test_salvaged_stl.py`: smoke tests proving the salvage works without the old stack.
 
 ## Local Salvage Test
@@ -18,13 +20,13 @@ oPIEC, persistence, frontend, and export layers.
 Run this from `/home/qnc/scallop`:
 
 ```bash
-.venv/bin/python -m unittest -v tests.test_salvaged_stl
+.venv/bin/python -m unittest -v tests.test_salvaged_stl tests.test_stl_prob tests.test_event_calculus
 ```
 
 Successful salvage looks like:
 
 ```text
-Ran 3 tests
+Ran 11 tests
 
 OK
 ```
@@ -35,6 +37,8 @@ Those tests verify that:
 - `drone_rules/drone_rules.yaml` loads and compiles into rules;
 - synthetic drone poses evaluate through the monitor;
 - the Graphviz visualizer writes `.dot`, `.svg`, and `.json` artifacts.
+- STL predicate probabilities can be exported as Scallop facts.
+- exported STL facts can be consumed by the Event Calculus module.
 
 ## Manual Graphviz Check
 
@@ -74,6 +78,93 @@ Expected files:
 The visualizer uses the system `dot` binary. On this machine it was found at
 `/usr/bin/dot`.
 
+## STL Predicate Probability Facts
+
+`stl_prob` converts STL robustness (`rho`) into a value in `[0, 1]` using:
+
+```text
+p = sigmoid(scale * (rho - midpoint))
+```
+
+By default it uses each rule's instantaneous robustness. That keeps the
+probability conversion separate from the STL temporal operator, instead of
+double-smoothing a window robustness value.
+
+Example:
+
+```bash
+.venv/bin/python - <<'PY'
+import jax.numpy as jnp
+from stl.monitor import STLDistanceMonitor
+from stl_prob import monitor_result_to_facts, render_scallop_facts
+
+monitor = STLDistanceMonitor(threshold_m=100.0, window_steps=2)
+result = None
+for i in range(2):
+    result = monitor.add_sample(
+        jnp.array([0.0, 0.0, 0.0], dtype=jnp.float32),
+        jnp.array([120.0 + i, 0.0, 15.0], dtype=jnp.float32),
+        jnp.array([0.0, 130.0 + i, 15.0], dtype=jnp.float32),
+    )
+
+facts = monitor_result_to_facts(result)
+print(render_scallop_facts(facts))
+PY
+```
+
+Example output:
+
+```text
+stl_predicate_probability("rule", "origin_to_drone1", 1, true, 0.999999999, 21.000000000).
+```
+
+The fields are:
+
+- source kind: `rule` or `group`
+- STL predicate/group name
+- `sample_index`
+- Boolean STL value
+- sigmoid probability
+- original robustness `rho`
+
+## Event Calculus Over Facts
+
+`event_calculus/` reads the exported `stl_predicate_probability(...)` stream and
+applies a compact probabilistic Event Calculus:
+
+- `value=true` initiates the fluent identified by `(source_kind, name)`;
+- `value=false` terminates that fluent;
+- when no event affects a fluent at a sample, inertia carries the previous
+  probability forward;
+- intervals are extracted from `ec_holds(...)` using a probability threshold.
+
+Run EC over a live fact export:
+
+```bash
+python -m event_calculus \
+  stl_prob/exports/stl_live_facts.scl \
+  --output stl_prob/exports/stl_live_ec.scl \
+  --hold-threshold 0.5
+```
+
+Output facts look like:
+
+```text
+ec_holds("rule", "origin_to_drone1", 1, 0.999999999).
+ec_interval("rule", "origin_to_drone1", 1, 12, 0.812345678, 0.999999999).
+```
+
+`ec_interval` uses `[start_sample_index, end_sample_index)` intervals.
+
+During a ROS live run, ready STL samples are exported automatically to:
+
+```text
+stl_prob/exports/stl_live_facts.scl
+```
+
+The export file is reset when the node starts unless
+`scallop_fact_reset_on_start:=false` is passed.
+
 ## ROS2 Run
 
 After sourcing your ROS2 environment, run:
@@ -96,9 +187,21 @@ python -m stl --ros-args \
   -p window_sec:=5.0 \
   -p sample_rate_hz:=10.0 \
   -p rules_path:=/home/qnc/scallop/drone_rules/drone_rules.yaml \
-  -p visualization_dir:=/tmp/stl_viz
+  -p visualization_dir:=/tmp/stl_viz \
+  -p scallop_fact_export_path:=/tmp/stl_live_facts.scl
 ```
 
+Scallop fact export parameters:
+
+- `scallop_fact_export_enabled`: defaults to `true`
+- `scallop_fact_export_path`: defaults to `stl_prob/exports/stl_live_facts.scl`
+- `scallop_fact_signal`: `instant` by default, or `window`
+- `scallop_fact_scale`: sigmoid scale, default `1.0`
+- `scallop_fact_midpoint`: sigmoid midpoint, default `0.0`
+- `scallop_fact_include_groups`: defaults to `true`
+- `scallop_fact_reset_on_start`: defaults to `true`
+
 If salvage is successful under ROS, the node logs first-pose messages for each
-topic, then rule robustness lines once the sample window is full. The live
-Graphviz outputs are written to the configured visualization directory.
+topic, then rule robustness lines and `scallop_facts_exported=...` once the
+sample window is full. The live Graphviz outputs are written to the configured
+visualization directory.

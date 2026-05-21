@@ -7,6 +7,8 @@ import jax.numpy as jnp
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 
+from stl_prob import ProbabilityConfig, ScallopFactExporter
+
 from .monitor import MonitorResult, STLDistanceMonitor
 from .visualizer import STLRuntimeVisualizer
 
@@ -33,13 +35,39 @@ class STLCGDistanceMonitor(Node):
         self.declare_parameter("sample_rate_hz", 10.0)
         self.declare_parameter("rules_path", "")
         self.declare_parameter("visualization_dir", "")
+        self.declare_parameter("scallop_fact_export_enabled", True)
+        self.declare_parameter("scallop_fact_export_path", "")
+        self.declare_parameter("scallop_fact_signal", "instant")
+        self.declare_parameter("scallop_fact_scale", 1.0)
+        self.declare_parameter("scallop_fact_midpoint", 0.0)
+        self.declare_parameter("scallop_fact_include_groups", True)
+        self.declare_parameter("scallop_fact_reset_on_start", True)
 
         self.threshold_m = float(self.get_parameter("threshold_m").value)
         self.window_sec = float(self.get_parameter("window_sec").value)
         self.sample_rate_hz = float(self.get_parameter("sample_rate_hz").value)
+        self.scallop_fact_export_enabled = bool(
+            self.get_parameter("scallop_fact_export_enabled").value
+        )
+        self.scallop_fact_signal = str(
+            self.get_parameter("scallop_fact_signal").value
+        ).strip()
+        self.scallop_fact_scale = float(self.get_parameter("scallop_fact_scale").value)
+        self.scallop_fact_midpoint = float(
+            self.get_parameter("scallop_fact_midpoint").value
+        )
+        self.scallop_fact_include_groups = bool(
+            self.get_parameter("scallop_fact_include_groups").value
+        )
+        self.scallop_fact_reset_on_start = bool(
+            self.get_parameter("scallop_fact_reset_on_start").value
+        )
         configured_rules_path = str(self.get_parameter("rules_path").value).strip()
         configured_visualization_dir = str(
             self.get_parameter("visualization_dir").value
+        ).strip()
+        configured_fact_export_path = str(
+            self.get_parameter("scallop_fact_export_path").value
         ).strip()
 
         if self.sample_rate_hz <= 0.0:
@@ -61,6 +89,26 @@ class STLCGDistanceMonitor(Node):
                 if configured_visualization_dir
                 else Path(__file__).with_name("stl_viz")
             )
+        )
+        default_fact_export_path = (
+            Path(__file__).resolve().parents[1]
+            / "stl_prob"
+            / "exports"
+            / "stl_live_facts.scl"
+        )
+        self.scallop_fact_exporter = (
+            ScallopFactExporter(
+                configured_fact_export_path or default_fact_export_path,
+                config=ProbabilityConfig(
+                    scale=self.scallop_fact_scale,
+                    midpoint=self.scallop_fact_midpoint,
+                    signal=self.scallop_fact_signal,
+                ),
+                include_groups=self.scallop_fact_include_groups,
+                reset_on_start=self.scallop_fact_reset_on_start,
+            )
+            if self.scallop_fact_export_enabled
+            else None
         )
 
         self.origin: Optional[jnp.ndarray] = None
@@ -89,6 +137,17 @@ class STLCGDistanceMonitor(Node):
         self.get_logger().info(f"rules_path={self.monitor.rules_path}")
         self.get_logger().info(f"visualization_svg={self.visualizer.artifacts.svg_path}")
         self.get_logger().info(f"visualization_json={self.visualizer.artifacts.json_path}")
+        if self.scallop_fact_exporter is not None:
+            self.get_logger().info(
+                f"scallop_fact_export_path={self.scallop_fact_exporter.output_path}"
+            )
+            self.get_logger().info(
+                "scallop_fact_export="
+                f"signal={self.scallop_fact_signal} "
+                f"scale={self.scallop_fact_scale} "
+                f"midpoint={self.scallop_fact_midpoint} "
+                f"include_groups={self.scallop_fact_include_groups}"
+            )
 
     @staticmethod
     def _pose_to_array(msg: PoseStamped) -> jnp.ndarray:
@@ -134,7 +193,19 @@ class STLCGDistanceMonitor(Node):
                 f"Collecting samples: {result.collected_samples}/{result.window_steps}"
             )
             return
+        exported_fact_count = self._export_scallop_facts(result)
         self._log_result(result)
+        if exported_fact_count is not None:
+            self.get_logger().info(
+                f"scallop_facts_exported={exported_fact_count} "
+                f"path={self.scallop_fact_exporter.output_path}"
+            )
+
+    def _export_scallop_facts(self, result: MonitorResult) -> Optional[int]:
+        if self.scallop_fact_exporter is None:
+            return None
+        facts = self.scallop_fact_exporter.export_result(result)
+        return len(facts)
 
     def _log_result(self, result: MonitorResult) -> None:
         lines = ["", "Instantaneous rule evaluations:"]

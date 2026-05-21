@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Runtime artifacts
+stl/stl_viz/
+stl_prob/exports/

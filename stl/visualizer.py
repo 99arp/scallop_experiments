@@ -100,16 +100,18 @@ class STLRuntimeVisualizer:
             lines.append(
                 f'  "group_{group_name}" [label="{self._escape_label(group_label)}", fillcolor="{group_color}"];'
             )
+        combine_label = self._escape_label("combine\n" + combine_operator)
         lines.append(
-            f'  "combine" [label="{self._escape_label("combine\\n" + combine_operator)}", fillcolor="#ddd6fe"];'
+            f'  "combine" [label="{combine_label}", fillcolor="#ddd6fe"];'
         )
 
         for group_name, _, _ in self._group_nodes(compiled_rules, result):
             lines.append(f'  "group_{group_name}" -> "combine";')
 
         for entity_name in self._ordered_entities(compiled_rules):
+            entity_label = self._escape_label("signal\n" + entity_name)
             lines.append(
-                f'  "entity_{entity_name}" [label="{self._escape_label("signal\\n" + entity_name)}", fillcolor="#dbeafe"];'
+                f'  "entity_{entity_name}" [label="{entity_label}", fillcolor="#dbeafe"];'
             )
 
         for compiled_rule in compiled_rules:
