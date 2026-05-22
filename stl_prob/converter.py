@@ -121,19 +121,20 @@ def rule_evaluation_to_fact(
     else:
         rho = rule.window_robustness
         value = rule.ok_window
+    raw_prob = sigmoid_probability(
+        rho,
+        scale=config.scale,
+        midpoint=config.midpoint,
+        min_probability=config.min_probability,
+        max_probability=config.max_probability,
+    )
     return ScallopFact(
         relation_name=config.relation_name,
         source_kind="rule",
         name=rule.name,
         sample_index=sample_index,
         value=value,
-        probability=sigmoid_probability(
-            rho,
-            scale=config.scale,
-            midpoint=config.midpoint,
-            min_probability=config.min_probability,
-            max_probability=config.max_probability,
-        ),
+        probability=raw_prob if value else 1.0 - raw_prob,
         rho=rho,
     )
 
@@ -146,19 +147,21 @@ def group_evaluation_to_fact(
 ) -> ScallopFact:
     config = config or ProbabilityConfig()
     rho = group.window_robustness
+    value = group.ok_window
+    raw_prob = sigmoid_probability(
+        rho,
+        scale=config.scale,
+        midpoint=config.midpoint,
+        min_probability=config.min_probability,
+        max_probability=config.max_probability,
+    )
     return ScallopFact(
         relation_name=config.relation_name,
         source_kind="group",
         name=group.name,
         sample_index=sample_index,
-        value=group.ok_window,
-        probability=sigmoid_probability(
-            rho,
-            scale=config.scale,
-            midpoint=config.midpoint,
-            min_probability=config.min_probability,
-            max_probability=config.max_probability,
-        ),
+        value=value,
+        probability=raw_prob if value else 1.0 - raw_prob,
         rho=rho,
     )
 

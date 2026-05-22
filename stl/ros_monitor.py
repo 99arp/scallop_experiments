@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -19,6 +21,10 @@ from .visualizer import STLRuntimeVisualizer
 
 
 DistanceMonitorFactory = Callable[..., STLDistanceMonitor]
+
+
+def _escape_scl_string(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
 
 
 class STLCGDistanceMonitor(Node):
@@ -49,6 +55,8 @@ class STLCGDistanceMonitor(Node):
         self.declare_parameter("scallop_fact_reset_on_start", True)
         self.declare_parameter("event_calculus_live_enabled", True)
         self.declare_parameter("event_calculus_hold_threshold", 0.5)
+        self.declare_parameter("event_calculus_log_path", "")
+        self.declare_parameter("event_calculus_intervals_path", "")
 
         self.threshold_m = float(self.get_parameter("threshold_m").value)
         self.window_sec = float(self.get_parameter("window_sec").value)
@@ -75,6 +83,12 @@ class STLCGDistanceMonitor(Node):
         self.event_calculus_hold_threshold = float(
             self.get_parameter("event_calculus_hold_threshold").value
         )
+        configured_ec_log_path = str(
+            self.get_parameter("event_calculus_log_path").value
+        ).strip()
+        configured_ec_intervals_path = str(
+            self.get_parameter("event_calculus_intervals_path").value
+        ).strip()
         configured_rules_path = str(self.get_parameter("rules_path").value).strip()
         configured_visualization_dir = str(
             self.get_parameter("visualization_dir").value
@@ -103,12 +117,8 @@ class STLCGDistanceMonitor(Node):
                 else Path(__file__).with_name("stl_viz")
             )
         )
-        default_fact_export_path = (
-            Path(__file__).resolve().parents[1]
-            / "stl_prob"
-            / "exports"
-            / "stl_live_facts.scl"
-        )
+        _exports_dir = Path(__file__).resolve().parents[1] / "exports"
+        default_fact_export_path = _exports_dir / "stl_live_facts.scl"
         self.scallop_fact_exporter = (
             ScallopFactExporter(
                 configured_fact_export_path or default_fact_export_path,
@@ -132,6 +142,22 @@ class STLCGDistanceMonitor(Node):
             if self.event_calculus_live_enabled
             else None
         )
+        _ec_enabled = self.live_event_calculus is not None
+        self._ec_log_path: Optional[Path] = (
+            Path(configured_ec_log_path) if configured_ec_log_path
+            else _exports_dir / "ec_live_results.pl"
+        ) if _ec_enabled else None
+        self._ec_intervals_path: Optional[Path] = (
+            Path(configured_ec_intervals_path) if configured_ec_intervals_path
+            else _exports_dir / "ec_live_intervals.scl"
+        ) if _ec_enabled else None
+        self._ec_intervals_json_path: Optional[Path] = (
+            Path(__file__).resolve().parent / "stl_viz" / "ec_live_intervals.json"
+        ) if _ec_enabled else None
+        for path in (self._ec_log_path, self._ec_intervals_path, self._ec_intervals_json_path):
+            if path is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("", encoding="utf-8")
 
         self.origin: Optional[jnp.ndarray] = None
         self.drone1: Optional[jnp.ndarray] = None
@@ -175,6 +201,8 @@ class STLCGDistanceMonitor(Node):
                 "event_calculus_live=true "
                 f"hold_threshold={self.event_calculus_hold_threshold}"
             )
+            self.get_logger().info(f"event_calculus_log_path={self._ec_log_path}")
+            self.get_logger().info(f"event_calculus_intervals_path={self._ec_intervals_path}")
 
     @staticmethod
     def _pose_to_array(msg: PoseStamped) -> jnp.ndarray:
@@ -241,6 +269,12 @@ class STLCGDistanceMonitor(Node):
         result = self.live_event_calculus.feed(
             scallop_facts_to_event_calculus_facts(facts)
         )
+        if self._ec_log_path is not None:
+            self._write_ec_pl(result)
+        if self._ec_intervals_path is not None:
+            self._write_ec_intervals_scl(result)
+        if self._ec_intervals_json_path is not None:
+            self._write_ec_intervals_json(result)
         if not result.intervals:
             self.get_logger().info("event_calculus_intervals=none")
             return
@@ -254,6 +288,90 @@ class STLCGDistanceMonitor(Node):
                 f"p_max={interval.max_probability:.3f}"
             )
         self.get_logger().info("\n".join(lines))
+
+    def _write_ec_pl(self, result) -> None:
+        cfg = self.live_event_calculus.config
+        narrative = self.live_event_calculus.facts
+
+        lines: list[str] = ["% Event Calculus live reasoning snapshot", ""]
+
+        lines.append("% --- Narrative (input events) ---")
+        for fact in sorted(narrative, key=lambda f: (f.fluent_key, f.sample_index)):
+            predicate = "initiatedAt" if fact.value else "terminatedAt"
+            lines.append(
+                f"{predicate}({fact.source_kind}, {fact.name}, "
+                f"{fact.sample_index}, {fact.probability:.6f})."
+            )
+
+        lines.append("")
+        lines.append(f"% --- Derived {cfg.holds_relation_name} ---")
+        for point in sorted(result.holds, key=lambda p: (p.fluent_key, p.sample_index)):
+            lines.append(
+                f"{cfg.holds_relation_name}({point.source_kind}, {point.name}, "
+                f"{point.sample_index}, {point.probability:.6f})."
+            )
+
+        lines.append("")
+        lines.append(f"% --- {cfg.interval_relation_name} intervals ---")
+        for interval in result.intervals:
+            lines.append(
+                f"{cfg.interval_relation_name}({interval.source_kind}, {interval.name}, "
+                f"{interval.start_sample_index}, {interval.end_sample_index}, "
+                f"{interval.min_probability:.6f}, {interval.max_probability:.6f})."
+            )
+
+        self._ec_log_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    def _write_ec_intervals_scl(self, result) -> None:
+        cfg = self.live_event_calculus.config
+        rel = cfg.interval_relation_name
+        fact_lines = [
+            f'  {interval.min_probability:.9f}::'
+            f'("{_escape_scl_string(interval.source_kind)}", '
+            f'"{_escape_scl_string(interval.name)}", '
+            f"{interval.start_sample_index}, "
+            f"{interval.end_sample_index}),"
+            for interval in result.intervals
+        ]
+        content = (
+            f"type {rel}(String, String, i32, i32)\n"
+            f"\n"
+            f"rel {rel} = {{\n"
+            + "\n".join(fact_lines) + "\n"
+            + "}\n"
+        )
+        self._ec_intervals_path.write_text(content, encoding="utf-8")
+
+    def _write_ec_intervals_json(self, result) -> None:
+        narrative = self.live_event_calculus.facts
+        sample_index = max((f.sample_index for f in narrative), default=None)
+        intervals = [
+            {
+                "source_kind": iv.source_kind,
+                "name": iv.name,
+                "start": iv.start_sample_index,
+                "end": iv.end_sample_index,
+                "p_min": round(iv.min_probability, 9),
+                "p_max": round(iv.max_probability, 9),
+            }
+            for iv in result.intervals
+        ]
+        all_bounds = (
+            [iv.start_sample_index for iv in result.intervals]
+            + [iv.end_sample_index for iv in result.intervals]
+        )
+        snapshot = {
+            "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sample_index": sample_index,
+            "intervals": intervals,
+            "axis": {
+                "start": min(all_bounds) if all_bounds else 0,
+                "end": max(all_bounds) if all_bounds else (sample_index or 0),
+            },
+        }
+        self._ec_intervals_json_path.write_text(
+            json.dumps(snapshot, indent=2), encoding="utf-8"
+        )
 
     def _log_result(self, result: MonitorResult) -> None:
         lines = ["", "Instantaneous rule evaluations:"]

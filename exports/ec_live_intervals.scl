@@ -1,0 +1,14 @@
+type holdsFor(String, String, i32, i32)
+
+rel holdsFor = {
+  1.000000000::("group", "distance", 49, 80),
+  0.993307173::("rule", "drone1_height_max", 67, 80),
+  0.999999702::("rule", "drone1_height_max_50", 49, 80),
+  1.000000000::("rule", "drone1_height_min", 49, 80),
+  1.000000000::("rule", "drone1_to_drone2", 49, 80),
+  0.993307173::("rule", "drone2_height_max", 67, 80),
+  0.999999702::("rule", "drone2_height_max_50", 49, 80),
+  1.000000000::("rule", "drone2_height_min", 49, 80),
+  1.000000000::("rule", "origin_to_drone1", 49, 80),
+  1.000000000::("rule", "origin_to_drone2", 49, 80),
+}
